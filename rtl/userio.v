@@ -56,7 +56,7 @@ module userio
 	// 'output reg' driven by two separate always blocks (bits [5:0],[7] in the
 	// reset-gated config block, bit [6] in the free-running block) - a multi-
 	// driven variable that Vivado rejects. Split into internal registers (see
-	// below); the port is now a plain output net. Semantics unchanged.
+	// below); the port is a plain output net. Semantics unchanged.
 	output      [7:0] memory_config,
 	output reg  [4:0] chipset_config,
 	output reg  [3:0] floppy_config,

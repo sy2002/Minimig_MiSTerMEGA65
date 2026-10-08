@@ -104,7 +104,9 @@ module ciaa
 	output [7:0] data_out,      // CPU data bus output
 	input        tick,          // TOD tick input (50/60 Hz)
 	input        eclk,          // E clock (system clock / 10)
-	input        cnt_in,        // CNT pin input (AExp: backported from upstream b013ce3, PR #230)
+	// MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: backport of upstream
+	// MiSTer commit b013ce3 (PR #230).
+	input        cnt_in,        // CNT pin input
 	output       irq,           // Interrupt request to CPU
 
 	// Port A connections (disk and game port control)
@@ -127,7 +129,7 @@ module ciaa
 	input  [1:0] kbd_mouse_type, // 2 = keyboard data
 	input  [7:0] kbd_mouse_data, // Keyboard scan code
 	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: keyboard flow control.
-	// kbd_ack is HIGH while the CPU is reading the keyboard SDR ($BFEC01) - the "code
+	// kbd_ack is high while the CPU is reading the keyboard SDR ($BFEC01): the "code
 	// consumed" event that keyboard.vhd waits for before sending the next code (the real
 	// keyboard-to-CIA handshake, preventing single-byte-SDR overrun on raw CIA readers).
 	output       kbd_ack,       // CPU reads keyboard SDR (level, held across the read)
@@ -249,10 +251,10 @@ assign sdr_out = (!wr && sdr) ? sdr_latch[7:0] : 8'h00;
 // Expose "keyboard code consumed" so keyboard.vhd can wait for the Amiga to take a code
 // before sending the next (the real-keyboard handshake that prevents single-byte-SDR
 // overrun on raw CIA readers). (!wr && sdr) == aen & rd & rs==C == a CPU read of the
-// keyboard SDR $BFEC01. Registered on clk7_en, so it is a LEVEL held for the whole
-// multi-cycle (E-clock-synced VPA) read: keyboard.vhd MUST rising-edge-detect it (one
-// edge = one read = one code consumed); free-latching a held level would let the tail of
-// one read falsely acknowledge the next code.
+// keyboard SDR $BFEC01. Registered on clk7_en, so it is a level held for the whole
+// multi-cycle (E-clock-synced VPA) read: keyboard.vhd must detect its rising edge (one
+// edge = one read = one code consumed); latching the held level would let the tail of
+// one read acknowledge the next code as well.
 reg kbd_ack_r;
 always @(posedge clk)
   if (clk7_en) kbd_ack_r <= (!wr && sdr);

@@ -38,10 +38,10 @@ module agnus_beamcounter
 	output reg [15:0] data_out,       // bus data out
 	input       [8:1] reg_address_in, // register address inputs
 	// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: hpos was an 'output reg'
-	// driven by TWO always blocks (bits [8:1] clocked, bit [0] combinational
+	// driven by two always blocks (bits [8:1] clocked, bit [0] combinational
 	// from cck) - a multi-driven variable that Vivado rejects. Split into an
 	// internal register hpos_hi[8:1] plus a continuous assign of bit 0 (see
-	// below); the port itself is now a plain output net. Semantics unchanged.
+	// below); the port itself is a plain output net. Semantics unchanged.
 	output      [8:0] hpos,           // horizontal beam counter (140ns)
 	output reg [10:0] vpos,           // vertical beam counter
 	output reg        _hsync,         // horizontal sync
@@ -111,9 +111,9 @@ always @(*) begin
 	if (reg_address_in[8:1]==VPOSR[8:1] || reg_address_in[8:1]==VPOSW[8:1])
 		data_out[15:0] = {long_frame,1'b0,ecs,ntsc,2'b00,{2{aga}},long_line,4'b0000,vpos[10:8]};
 	else if (reg_address_in[8:1]==VHPOSR[8:1] || reg_address_in[8:1]==VHPOSW[8:1])
-		// MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: VHPOSR reads one colour
-		// clock behind the internal counter, as a real Agnus does - backported from
-		// upstream MiSTer commit 06f30af (PR #234). Original:
+		// MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: backport of upstream
+		// MiSTer commit 06f30af (PR #234). VHPOSR reads one color clock behind the
+		// internal counter, as a real Agnus does. Original:
 		//data_out[15:0] = {vpos[7:0],hpos[8:1]};
 		data_out[15:0] = {vpos[7:0],|hpos[8:1] ? hpos[8:1] - 8'd1 : ersy ? 8'd0 : htotal[8:1]};
 	else
@@ -261,9 +261,9 @@ always @(posedge clk) begin
 end
 
 // horizontal beamcounter
-// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: bits [8:1] now live in the
-// internal register hpos_hi; bit [0] is cck combinationally (exactly what the
-// removed "always @(cck) hpos[0] = cck;" block did).
+// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: bits [8:1] live in the
+// internal register hpos_hi; bit [0] is cck combinationally, as in the
+// original "always @(cck) hpos[0] = cck;" block (kept commented out below).
 reg [8:1] hpos_hi;
 assign hpos = {hpos_hi[8:1], cck};
 
@@ -362,9 +362,9 @@ end
 //in interlaced mode every second frame is vtotal+1 long
 wire last_line = long_frame ? extra_line : vpos_equ_vtotal;
 
-// MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: the field flag for the
-// video output only toggles while LACE is set - backported from upstream
-// MiSTer commit d16cd84 (fixes MiSTer issue #231). Original:
+// MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: backport of upstream
+// MiSTer commit d16cd84 (fixes MiSTer issue #231). The field flag for the
+// video output only toggles while LACE is set. Original:
 //assign field1 = ~long_frame;
 assign field1 = (~long_frame) & lace;
 

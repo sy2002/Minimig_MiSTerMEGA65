@@ -4,29 +4,29 @@
 -- MiSTer2MEGA65 (AExp Amiga 500 port), June 2026:
 -- The original file wrapped the Altera altsyncram megafunction
 -- (library altera_mf), which does not exist in Vivado/Xilinx. All five
--- wrappers have been rewritten as portable, behavioral VHDL from which
+-- wrappers are rewritten as portable, behavioral VHDL from which
 -- Vivado infers block RAM (UG901 templates; see also the proven
 -- M2M/vhdl/tdp_ram.vhd and 2port2clk_ram.vhd patterns in the framework).
 -- Entity names, generics and ports (including their default values) are
--- IDENTICAL to the original, so no caller changes are needed. The
+-- identical to the original, so no caller changes are needed. The
 -- original altsyncram generic/port maps are kept in comments inside each
 -- architecture for reference.
 --
--- Consumers in the AExp Vivado file list: ONLY rtl/ide.v, which
+-- Consumers in the AExp Vivado file list: only rtl/ide.v, which
 -- instantiates "dpram #(12,16)" twice (io_buf0/io_buf1, equal widths on
 -- both ports, single clock, enable_*/cs_* left unconnected = defaults).
--- rtl/cpu_cache_new.v also used dpram but is NOT part of the AExp build.
+-- rtl/cpu_cache_new.v also uses dpram but is not part of the AExp build.
 -- spram, spram_sz and dpram_difclk are unused in the AExp build; they
 -- were ported anyway for completeness.
 --
 -- Replicated altsyncram semantics (identical for all wrappers):
---   * READ LATENCY = 1 enabled clock edge. The original used a
+--   * Read latency = 1 enabled clock edge. The original used a
 --     registered read address with UNREGISTERED output data
 --     (outdata_reg = UNREGISTERED), i.e. q changes only as a consequence
 --     of a clock edge and is stable in between. Modeled here as a
 --     synchronous read into a data register (the BRAM output latch).
 --   * Same-port read-during-write = "NEW_DATA_NO_NBE_READ": a port that
---     writes also presents the NEW (just written) data on its q output
+--     writes also presents the new (just written) data on its q output
 --     after that clock edge ("write first"). Modeled with the UG901
 --     shared-variable write-first template (write before read).
 --   * Mixed-port (port A vs port B) read-during-write was left at the
@@ -36,7 +36,7 @@
 --   * Memory powers up as all zeros (power_up_uninitialized = FALSE);
 --     replicated with initial values, honored by Vivado.
 --   * mem_init_file (.mif) and mem_name (Altera In-System Memory Content
---     Editor) are NOT supported in this port; no caller in the Minimig
+--     Editor) are not supported in this port; no caller in the Minimig
 --     code base uses them. Guarded by elaboration-time assertions.
 --------------------------------------------------------------
 
@@ -54,10 +54,10 @@
 -- MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: rewritten as inferred
 -- BRAM (UG901 single-port write-first template).
 -- Latency: read data valid 1 clock after the address is presented.
--- Same-port read-during-write: NEW data (write first), as the original
+-- Same-port read-during-write: new data (write first), as the original
 -- read_during_write_mode_port_a = "NEW_DATA_NO_NBE_READ".
--- NOTE: like the original (clock_enable_input_a => "BYPASS" and clocken0
--- left unconnected), the "enable" port is IGNORED; it only exists for
+-- Like the original (clock_enable_input_a => "BYPASS" and clocken0
+-- left unconnected), the "enable" port is ignored; it only exists for
 -- interface compatibility. "cs" gates writes and forces q to all ones.
 --------------------------------------------------------------
 
@@ -197,10 +197,10 @@ END SYN;
 -- Latency per port: read data valid 1 enabled clock edge after the
 -- address is presented (enable_a/enable_b replicate the original
 -- clocken0/clocken1, which gated the whole port input stage).
--- Same-port read-during-write: NEW data ("NEW_DATA_NO_NBE_READ").
+-- Same-port read-during-write: new data ("NEW_DATA_NO_NBE_READ").
 -- Mixed-port read-during-write: undefined (original: altsyncram default
 -- "DONT_CARE").
--- RESTRICTION: only equal port geometries are supported
+-- Restriction: only equal port geometries are supported
 -- (addr_width_a = addr_width_b, data_width_a = data_width_b). Altera's
 -- altsyncram supported mixed-width ports, but the only AExp consumer,
 -- rtl/ide.v via entity dpram, uses 12/16 on both ports. Guarded by an
@@ -392,7 +392,7 @@ END SYN;
 -- MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: rewritten as inferred
 -- true dual port, dual clock BRAM (UG901 shared-variable template,
 -- write-first). Same semantics as dpram_dif above, but port A runs on
--- clock0 and port B on clock1. NOT instantiated by any file in the AExp
+-- clock0 and port B on clock1. Not instantiated by any file in the AExp
 -- Vivado file list; ported for completeness. Same equal-geometry
 -- restriction as dpram_dif.
 --------------------------------------------------------------

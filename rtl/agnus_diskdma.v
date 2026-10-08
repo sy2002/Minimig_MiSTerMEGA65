@@ -18,7 +18,7 @@ module agnus_diskdma
 	// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: address_out was an
 	// 'output reg' driven by two separate always blocks (bits [20:16] and
 	// [15:1]) - a multi-driven variable that Vivado rejects. Split into two
-	// internal registers recombined below; the port is now a plain output net.
+	// internal registers recombined below; the port is a plain output net.
 	output	[20:1] address_out	//chip address out current disk dma pointer
 );
 

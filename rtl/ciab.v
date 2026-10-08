@@ -25,7 +25,9 @@ module ciab
   output   [7:0] data_out,  // CPU data bus output
   input   tick,             // TOD tick input (50/60 Hz)
   input   eclk,             // E clock (system clock / 10)
-  input   cnt_in,           // CNT pin input (AExp: backported from upstream b013ce3, PR #230)
+  // MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: backport of upstream
+  // MiSTer commit b013ce3 (PR #230).
+  input   cnt_in,           // CNT pin input
   input   flag,             // FLAG input (disk index pulse)
   output   irq,             // Interrupt request (INT6)
 

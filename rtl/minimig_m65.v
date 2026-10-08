@@ -2,20 +2,22 @@
 //
 // VHDL-friendly wrapper around rtl/minimig.v for the MEGA65 port.
 //
-// Why this file exists:
 // minimig.v uses port names with a leading underscore (_cpu_as, _hsync,
-// _joy1, ...) which are not legal VHDL identifiers, so the M2M framework's
+// _joy1, ...), which are not legal VHDL identifiers, so AExp's
 // CORE/vhdl/main.vhd cannot instantiate minimig directly. This wrapper
 // 1. renames all underscore-prefixed ports to the M2M convention
 //    (active-low signals get a _n suffix instead of the _ prefix),
 // 2. ties off every subsystem that the Amiga 500 configuration never uses
-//    (Toccata, IDE/Gayle externals, RS232 modem lines, RTC, joystick ports
-//    3/4, analog joysticks, AGA chip48 bus), so that CORE/vhdl/main.vhd
-//    stays free of clutter and the unused logic constant-folds in synthesis.
+//    (Toccata, IDE/Gayle externals, RS232 modem lines, joystick ports 3/4,
+//    analog joysticks, AGA chip48 bus), so that main.vhd stays free of
+//    clutter and the unused logic constant-folds in synthesis,
+// 3. passes through the upstream floppy host channel and battery RTC ports,
+//    and the AExp additions: the keyboard acknowledge and the Hardware
+//    Floppy ports of paula_floppy.v.
 //
-// The wrapper adds NO logic - it is pure renaming and constant tie-offs.
-// See .research/PORTING-PLAN.md and the port table in
-// .research/phase-a/sweep-minimig.md for the underlying contract.
+// The wrapper contains no logic: only renaming, pass-through and constant
+// tie-offs. See AExp's doc/developers/architecture.md, section 2 (From the
+// board to the Amiga chips) and section 9 (The Minimig submodule).
 
 module minimig_m65
 (
@@ -38,9 +40,9 @@ module minimig_m65
 	// SRAM-style memory interface (served by BRAM in mega65.vhd)
 	output [15:0] ram_data,       // write data
 	input  [15:0] ramdata_in,     // read data
-	output [22:1] ram_address,    // BANKED word address (see minimig_sram_bridge.v;
-	                              // minimig's bit 23 is constant 0 after the AExp
-	                              // sweep change and is dropped here)
+	output [22:1] ram_address,    // banked word address (see minimig_sram_bridge.v);
+	                              // minimig.v ties bit 23 to 0, and it is dropped
+	                              // here
 	output        ram_bhe_n,      // upper byte enable (bits 15:8), active low
 	output        ram_ble_n,      // lower byte enable (bits 7:0), active low
 	output        ram_we_n,       // write enable, active low
@@ -66,17 +68,19 @@ module minimig_m65
 	input   [7:0] kbd_mouse_data, // scancode (bit 7 = release)
 	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: keyboard flow control -
 	// pass CIA-A's "keyboard SDR read" back-channel through to keyboard.vhd (see ciaa.v).
-	output        kbd_ack,        // HIGH while the CPU reads the keyboard SDR
+	output        kbd_ack,        // high while the CPU reads the keyboard SDR
 
 	// LEDs
 	output        pwr_led,
 	output        fdd_led,
 	output        hdd_led,
 
-	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: physical-drive support -
-	// the MEGA65's real internal floppy as an Amiga drive unit (main.vhd /
-	// mega65.vhd drive the connector and condition the status levels; see the
-	// muxes in paula_floppy.v). fdd_phys_mask = 0 -> core bit-identical.
+	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: Hardware Floppy support:
+	// the MEGA65's internal floppy drive as an Amiga drive unit. mega65.vhd
+	// drives the connector, the physical_fdd front end conditions the status
+	// levels, and the muxes in paula_floppy.v substitute them for the unit in
+	// fdd_phys_mask. With fdd_phys_mask = 0 the floppy logic is bit-identical
+	// to upstream.
 	output  [7:0] fdd_ctrl,        // raw CIA-B byte {motor_n,sel3_n,sel2_n,sel1_n,sel0_n,side,direc,step_n}
 	output  [3:0] fdd_motor_on,    // per-unit latched motor state (active high)
 	input   [3:0] fdd_phys_mask,   // one-hot: which unit is the physical drive
@@ -98,9 +102,10 @@ module minimig_m65
 	input         fdd_obs_stb,
 	input         fdd_obs_legacy,
 
-	// MEGA65 battery-backed RTC (issue #13): MiSTer-format 65-bit conduit,
-	// [63:0] = MSM6242B BCD nibbles, [64] = "new value" toggle. Driven by the
-	// M2M framework from the board RTC; decoded by minimig.v at $DC0000.
+	// MEGA65 battery-backed RTC: MiSTer-format 65-bit conduit, [63:0] =
+	// MSM6242B BCD nibbles, [64] = "new value" toggle. Driven by the M2M
+	// framework from the board RTC; decoded by minimig.v at $DC0000
+	// (AExp GitHub #13).
 	input  [64:0] rtc,
 
 	// host controller interface, shared IO_STROBE/IO_DIN bus with two frame
@@ -131,7 +136,7 @@ module minimig_m65
 	output [14:0] rdata
 );
 
-// minimig's ram_address[23] is driven constant 0 (AExp sweep change); consume it here
+// minimig.v ties ram_address[23] to 0; it is consumed here and not exported
 wire ram_address23_unused;
 
 minimig minimig_inst
@@ -172,7 +177,7 @@ minimig minimig_inst
 	.cck           (cck          ),
 	.eclk          (eclk         ),
 
-	//rs232 pins (no serial port wired in milestone 1; inactive levels as MiSTer)
+	//rs232 pins (no serial port is wired; the inputs sit at their idle levels)
 	.rxd           (1'b1         ),
 	.txd           (             ),
 	.cts           (1'b1         ),
@@ -187,7 +192,7 @@ minimig minimig_inst
 	._joy2         (joy2_n       ),
 	._joy3         (16'hFFFF     ), // not connected (active low, idle)
 	._joy4         (16'hFFFF     ),
-	.joya1         (16'h0000     ), // analog joysticks: unused (cmd 0xF9 = 0)
+	.joya1         (16'h0000     ), // analog joysticks: unused (cmd 0xF9 bit 1 = 0)
 	.joya2         (16'h0000     ),
 	.mouse_btn     (mouse_btn    ),
 	.kms_level     (kms_level    ),
@@ -197,7 +202,7 @@ minimig minimig_inst
 	.pwr_led       (pwr_led      ),
 	.fdd_led       (fdd_led      ),
 	.hdd_led       (hdd_led      ),
-	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: physical-drive support
+	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: Hardware Floppy support
 	.fdd_ctrl      (fdd_ctrl     ),
 	.fdd_motor_on  (fdd_motor_on ),
 	.fdd_dsig      (fdd_dsig     ),
@@ -210,6 +215,7 @@ minimig minimig_inst
 	.fdd_obs_word  (fdd_obs_word ),
 	.fdd_obs_stb   (fdd_obs_stb  ),
 	.fdd_obs_legacy(fdd_obs_legacy),
+	// Hardware Floppy support, continued: the real status lines
 	.fdd_phys_mask (fdd_phys_mask),
 	.fdd_phys_change_n(fdd_phys_change_n),
 	.fdd_phys_wprot_n (fdd_phys_wprot_n ),
@@ -217,14 +223,14 @@ minimig minimig_inst
 	.fdd_phys_ready_n (fdd_phys_ready_n ),
 	.fdd_phys_index   (fdd_phys_index   ),
 	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: MEGA65 battery RTC wired
-	// through to Minimig's MSM6242B clock at $DC0000 (issue #13).
+	// through to Minimig's MSM6242B clock at $DC0000 (AExp GitHub #13).
 	.rtc           (rtc          ),
 
 	//host controller interface
-	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: IO_FPGA was tied 1'b0
-	// and IO_DOUT left open in milestone 1 (no floppy). Both are now real
-	// ports for the ADF floppy milestone (track engine on the paula_floppy
-	// host channel).
+	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: the floppy host channel.
+	// IO_FPGA and IO_DOUT connect paula_floppy.v to the track engine
+	// (adf_track_engine.vhd), which serves the Disk Image drives and streams
+	// the words of the Hardware Floppy.
 	.IO_UIO        (io_uio       ),
 	.IO_FPGA       (io_fpga      ),
 	.IO_STROBE     (io_strobe    ),
@@ -256,7 +262,7 @@ minimig minimig_inst
 	.rdata_okk     (             ),
 	.aud_mix       (             ),
 
-	// Toccata audio: disabled in the AExp port (see minimig.v surgery)
+	// Toccata audio: not ported (see the Toccata block in minimig.v)
 	.toccata_ena   (1'b0         ),
 	.toccata_base  (8'h00        ),
 	.toccata_aud_left  (         ),

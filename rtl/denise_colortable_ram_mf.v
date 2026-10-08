@@ -19,9 +19,9 @@
 //
 // MiSTer2MEGA65 (AExp Amiga 500 port), June 2026:
 // The Altera altsyncram megafunction is not available in Vivado/Xilinx.
-// The module body has been rewritten as behavioral Verilog that Vivado
-// infers as block RAM. Module name and port list are IDENTICAL to the
-// original, so the consumers (denise_colortable.v, denise_hamgenerator.v)
+// The module body is rewritten as behavioral Verilog that Vivado infers
+// as block RAM. Module name and port list are identical to the original,
+// so the consumers (denise_colortable.v, denise_hamgenerator.v)
 // are unchanged. The original altsyncram instantiation is kept below,
 // commented out, for reference.
 //
@@ -35,14 +35,14 @@
 //     byteena_a[2] data[23:16], byteena_a[3] data[31:24]. The consumers
 //     rely on this: wr_bs = loct ? 4'b0011 : 4'b1111 must write only the
 //     low halfword (color_lo = rd_dat[15:0]) in "loct" mode.
-//   - READ LATENCY = 1 clock: read address is registered at the rising
+//   - read latency = 1 clock: read address is registered at the rising
 //     edge of "clock" (when enable = 1), output q is unregistered
 //     (outdata_reg_b = UNREGISTERED), i.e. q is stable between read
 //     edges and updates only as a consequence of an enabled clock edge.
 //     This is modeled here as a synchronous "read first" register
 //     (q_reg <= ram[rdaddress]) which has exactly the same timing.
 //   - read_during_write_mode_mixed_ports = OLD_DATA: when the read port
-//     reads the address that is being written in the same cycle, the OLD
+//     reads the address that is being written in the same cycle, the old
 //     memory content is returned. The "read before write" coding style
 //     below reproduces this and makes Vivado choose READ_FIRST collision
 //     behavior for the inferred BRAM.
@@ -107,7 +107,7 @@ module denise_colortable_ram_mf (
 // 1 enabled clock edge: the read happens at the rising edge of "clock"
 // (gated by "enable" = original clocken0), q is unregistered beyond that
 // (q_reg is the BRAM output latch, outdata_reg_b = UNREGISTERED). Reading
-// the address that is written in the same cycle returns OLD data
+// the address that is written in the same cycle returns old data
 // (READ_FIRST), matching read_during_write_mode_mixed_ports = "OLD_DATA".
 // Byte lane order follows the altsyncram convention:
 // byteena_a[0] = data[7:0] ... byteena_a[3] = data[31:24]; the consumers

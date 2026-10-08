@@ -24,27 +24,28 @@
 //--------------------------------------------------------------------------//
 //--------------------------------------------------------------------------//
 //                                                                          //
-// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026:                         //
-// Reduced to the 68000 (fx68k) path running entirely on the single        //
-// 28.375 MHz core clock:                                                  //
-//  * TG68KdotC_Kernel (68020, VHDL) is no longer instantiated; its output //
-//    wires are tied to safe constants so the cpucfg muxes still           //
-//    elaborate. cpucfg MUST be driven with 2'b00 by the parent.           //
-//  * The SDRAM/DDR3 cpu port (sdram_ctrl/ddram_ctrl + cpu cache in        //
-//    MiSTer's Minimig.sv) is not ported - all Amiga memory is BRAM        //
-//    behind minimig.v's chip bus. ramsel is tied to 0, so EVERY CPU       //
-//    cycle (incl. stray accesses to $DD4000-$DD5FFF, sel_dd) goes to the  //
-//    chip bus where minimig_m68k_bridge.v always generates _dtack. This   //
-//    is also the defensive always-ack: in the original code a sel_dd      //
-//    access would wait forever on ramready and hang the CPU.              //
-//  * Toccata autoconfig is disabled (sound card logic not ported).        //
-//  * Zorro II/III fastram autoconfig logic is kept but self-disables      //
-//    with fastramcfg = 3'b000 (the only supported configuration).         //
-//  * The port list is unchanged for compile compatibility with the way    //
-//    MiSTer's Minimig.sv instantiates this module. Unused inputs must be  //
-//    tied off by the parent, unused outputs left open.                    //
-//  * Original code is kept as comments; all changes carry a               //
-//    "MiSTer2MEGA65" provenance comment.                                  //
+// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026:                          //
+// Reduced to the 68000 (fx68k) path, running entirely on the 28.375 MHz    //
+// core clock:                                                              //
+//  * TG68KdotC_Kernel (68020, VHDL) is not instantiated; its output wires  //
+//    are tied to safe constants so the cpucfg muxes still elaborate. The   //
+//    parent must drive cpucfg with 2'b00.                                  //
+//  * The SDRAM/DDR3 cpu port (sdram_ctrl/ddram_ctrl + cpu cache in         //
+//    MiSTer's Minimig.sv) is not ported: all Amiga memory is BRAM behind   //
+//    the chip bus of minimig.v. ramsel is tied to 0, so every CPU cycle    //
+//    (including stray accesses to $DD4000-$DD5FFF, sel_dd) goes to the     //
+//    chip bus, where minimig_m68k_bridge.v always generates _dtack. This   //
+//    also prevents a hang: ramready is tied to 0 in AExp (no SDRAM         //
+//    controller), so routing a sel_dd access to the ramsel port, as the    //
+//    original does, would wait forever.                                    //
+//  * Toccata autoconfig is disabled (sound card logic not ported).         //
+//  * Zorro II/III fastram autoconfig logic is kept but self-disables       //
+//    with fastramcfg = 3'b000 (the only supported configuration).          //
+//  * The port list is unchanged for compile compatibility with the way     //
+//    MiSTer's Minimig.sv instantiates this module. The parent ties off the //
+//    unused inputs and leaves the unused outputs open.                     //
+//  * Original code is kept as comments; all changes carry a                //
+//    "MiSTer2MEGA65" provenance comment.                                   //
 //                                                                          //
 //--------------------------------------------------------------------------//
 //--------------------------------------------------------------------------//
@@ -224,11 +225,11 @@ always @* begin
 end
 
 // MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: the TG68KdotC_Kernel
-// (68020 soft CPU, VHDL) is not ported - this core is 68000 (fx68k) only and
-// cpucfg is always 2'b00. The instance is removed (it was instantiated
-// unconditionally and would synthesize ~10k LUTs of dead logic and pull in
-// the tg68k VHDL sources). Its former output wires are tied to safe inactive
-// constants so the cpucfg muxes above still elaborate unchanged:
+// (68020 soft CPU, VHDL) is not ported: this core is 68000 (fx68k) only and
+// cpucfg is always 2'b00. Upstream instantiates it unconditionally, which
+// would synthesize ~10k LUTs of dead logic and pull in the tg68k VHDL
+// sources, so the instance is commented out below. Its output wires are tied
+// to safe inactive constants so the cpucfg muxes above still elaborate:
 //   cpustate_p = 2'b01 ("no memaccess") so cpu_req would stay low,
 //   nwr/nuds/nlds = 1 (active low, deasserted), nresetout = 1 (not in reset).
 wire [15:0] cpu_dout_p  = 16'h0000;
@@ -361,14 +362,15 @@ reg        chipready;
 reg [15:0] chipdout_i;
 reg  [2:0] ipl_i;
 reg        c_as,c_rw,c_uds,c_lds;
-// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: chip-bus FSM kept per
-// porting plan. NOTE: its outputs (c_as/c_rw/c_uds/c_lds, chipready,
-// chipdout_i, ipl_i) are only consumed by the cpucfg!=0 (TG68K) branch of
-// the mux above; the fx68k path drives the chip bus directly. With cpucfg
-// tied to 2'b00 in the parent, Vivado constant-propagates this FSM away.
-// This is the only negedge-clk logic in the core (constrain accordingly).
-// Vivado fix (see .research/c64_mister-diff.md B1): local reg declarations
-// require a NAMED block in plain Verilog mode.
+// MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: chip-bus FSM kept as in
+// upstream. Its outputs (c_as/c_rw/c_uds/c_lds, chipready, chipdout_i,
+// ipl_i) feed only the TG68K side: the cpucfg != 0 branch of the mux above
+// and the commented-out TG68K instance. The fx68k path drives the chip bus
+// directly, so, with cpucfg tied to 2'b00 in the parent, Vivado removes this
+// FSM. It is the only Minimig logic clocked on the falling edge of clk, and
+// it would need its own timing review if the 68020 path came back.
+// The block is named because plain Verilog allows local reg declarations
+// only inside a named block.
 always @(negedge clk, negedge reset) begin : chipbus_fsm
 	reg [1:0] stage;
 	reg waitm;
@@ -486,7 +488,8 @@ reg [3:0] z3ram_base1;
 reg       z3ram_ena0;
 reg       z3ram_ena1;
 // MiSTer2MEGA65 (AExp Amiga 500 port), June 2026:
-//  * Named block (Vivado B1 fix: local reg declaration in unnamed block).
+//  * Named block: plain Verilog allows local reg declarations only inside a
+//    named block.
 //  * ac_toccata reset to 0: the Toccata sound card (fpga-toccata) is not
 //    ported, so we must not advertise a phantom Zorro-II board to the
 //    Kickstart expansion library.
@@ -501,7 +504,7 @@ always @(posedge clk) begin : autoconfig_blk
 		ac_memcard  <= cpucfg[1] ? fastramcfg : fastramcfg[2] ? 3'd3 : {1'b0, fastramcfg[1:0]};
 		//ac_toccata  <= 1; // MiSTer2MEGA65 (AExp): Toccata not ported, see above
 		ac_toccata  <= 0;
-		toccata_base <= 8'h00; // MiSTer2MEGA65 (AExp): give the (now never written) reg a defined value
+		toccata_base <= 8'h00; // MiSTer2MEGA65 (AExp): defined value; the autoconfig write below never fires
 		z2ram_ena   <= 0;
 		z3ram_ena0  <= 0;
 		z3ram_ena1  <= 0;
@@ -539,8 +542,8 @@ always @(posedge clk) begin : autoconfig_blk
 end
 
 // MiSTer2MEGA65 (AExp Amiga 500 port), June 2026: Toccata is not ported.
-// With ac_toccata now reset to 0 the original expression would wrongly
-// report the card as enabled, so the output is tied to 0 instead.
+// Since ac_toccata resets to 0 here, the original expression would report
+// the card as enabled, so the output is tied to 0 instead.
 //assign toccata_ena = ~ac_toccata;
 assign toccata_ena = 1'b0;
 

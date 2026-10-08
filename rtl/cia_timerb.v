@@ -45,8 +45,9 @@ always @(posedge clk)
 
 assign cnt_rise = cnt_sync[1] & ~cnt_sync[2];
 
-// MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: CNT pin + all four INMODE
-// count sources backported from upstream MiSTer commit b013ce3 (PR #230). Original:
+// MiSTer2MEGA65 (AExp Amiga 500 port), October 2026: backport of upstream
+// MiSTer commit b013ce3 (PR #230): the CNT pin and all four INMODE count
+// sources. Original:
 //assign count = tmcr[6] ? tmra_ovf : eclk;
 // Count source selected by CRB bits 6:5 (INMODE)
 assign count = tmcr[6] ? (tmcr[5] ? (tmra_ovf & cnt_sync[1]) : tmra_ovf)

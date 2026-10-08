@@ -107,14 +107,16 @@ module paula_floppy
 	output        fdd_led,			//disk activity LED, active when DMA is on
 	input	[1:0]   floppy_drives,	//floppy drive number
 
-	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: physical-drive support.
-	// One drive unit can be backed by the MEGA65's real internal floppy: the
-	// four status lines towards CIA-A are open-collector AND-terms across the
-	// drives, so for the unit selected by phys_mask the virtual drive model's
-	// term is replaced by the conditioned real-pin level (still gated by that
-	// unit's /SEL, like a real drive gates its outputs on SELECT). The real
+	// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: Hardware Floppy support.
+	// One drive unit can be backed by the MEGA65's internal floppy drive. The
+	// four status lines towards CIA-A are open-collector AND terms across the
+	// drives, so for the unit in phys_mask the term of the simulated drive is
+	// replaced by the conditioned level of the real pin (still gated by the
+	// /SEL of that unit, as a real drive gates its outputs on SELECT). The real
 	// INDEX is edge-injected into the CIA-B FLAG source. With phys_mask = 0
-	// every expression reduces bit-exactly to the original virtual-only logic.
+	// every expression reduces bit-exactly to the upstream logic. See AExp's
+	// doc/developers/hardware-floppy.md, section 4.7 (The CIA side: status
+	// lines, ready, index).
 	input   [3:0] phys_mask,      // one-hot: which unit is the physical drive (0000 = none)
 	input         phys_change_n,  // conditioned real /DSKCHG level (active low)
 	input         phys_wprot_n,   // conditioned real /WPROT level (active low)
@@ -130,20 +132,16 @@ module paula_floppy
 	output        fdd_dws,        // diagnostic: live ADKCON WORDSYNC level
 
 	// MiSTer2MEGA65 (AExp Amiga 500 port), August 2026: the DSKBYTR
-	// observation surface for real-disk copy protections (Rob Northen
-	// Copylock). The upstream DSKBYTR (assign below) is a constant stub
-	// (BYTEREADY=1 always, WORDEQUAL=1 always, data byte 0x00) - fine for
-	// DMA loaders and the ADF path, but a Copylock loader times the disk by
-	// CPU-polling DSKBYTR (poll WORDEQUAL for the sync, then count poll
-	// iterations while BYTEREADY toggles as raw MFM bytes arrive) to compare
-	// a 5%-short vs a 5%-long sector. With the stub that count is constant,
-	// the ratio is 0, the check fails and the game hangs. obs_word/obs_stb
-	// carry the reconstructed word stream of the MEGA65's real drive at the
-	// true (density-modulated) flux pace (tapped in main.vhd from the front
-	// end -> engine FIFO pop); from it the block below synthesises a faithful
-	// DSKBYTR. It engages ONLY while the physical unit is the selected,
-	// motor-on drive AND obs_legacy = 0, so every other read (ADF, no
-	// physical drive, or obs_legacy = 1) is bit-identical to before.
+	// observation surface for Rob Northen Copylock, which times the disk by
+	// polling DSKBYTR. The upstream DSKBYTR is a constant stub (BYTEREADY and
+	// WORDEQUAL always set, data byte 0x00): enough for DMA loaders, but the
+	// Copylock loader measures no timing difference and hangs. obs_word/obs_stb
+	// carry the word stream of the real drive at true flux pace (tapped in
+	// main.vhd where the track engine pops the front-end FIFO); the block at
+	// dskbytr below builds a faithful DSKBYTR from it while the physical unit
+	// is the selected, motor-on drive and obs_legacy = 0. Every other read
+	// returns the upstream stub. See AExp's doc/developers/hardware-floppy.md,
+	// section 5 (Copylock and the DSKBYTR observation surface).
 	input  [15:0] obs_word,       // reconstructed word from the real drive
 	input         obs_stb,        // 1-clk pulse: a new obs_word arrived (clk domain)
 	input         obs_legacy,     // 1 = disable the observation surface (A/B: revert to the stub)
@@ -328,12 +326,12 @@ always @(posedge clk) begin
 end
     
 // disk index pulses output
-// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: physical-drive support -
-// the fake 300 RPM index serves only the virtual units; the physical unit
-// contributes its REAL index instead, edge-detected in the clk7_en grid
+// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: Hardware Floppy support.
+// The simulated 300 RPM index serves only the simulated units; the physical
+// unit contributes its real index instead, edge-detected in the clk7_en grid
 // (CIA-B FLAG is a negative-edge interrupt on real silicon; cia_int latches
 // the level once per clk7 tick, so a one-tick pulse reproduces edge
-// semantics), gated like the fake one on "unit selected + motor on".
+// semantics), gated like the simulated one on "unit selected + motor on".
 //assign index = |(~_sel & motor_on) & ~|rpm_pulse_cnt & sof;  // (original)
 reg phys_index_del;
 always @(posedge clk) begin
@@ -428,8 +426,8 @@ always @(posedge clk) begin
 end
 
 //_ready,_track0 and _change signals
-// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: physical-drive support -
-// per-unit source substitution (see the port comment). The AND-terms model
+// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: Hardware Floppy support.
+// Per-unit source substitution (see the port comment). The AND terms model
 // the open-collector bus of a real Amiga: each drive contributes its level
 // only while its /SEL is asserted. phys_mask = 0 -> bit-exact originals.
 //assign _change = &(_sel | _disk_change);   // (original)
@@ -440,9 +438,9 @@ assign _change = &(_sel | chg_src_n);
 
 assign _wprot = &(_sel | wp_src_n);
 
-// the selected unit decides the track0 source: real /TRK0 sensor for the
-// physical unit (trackdisk's recalibrate must see the REAL sensor, or head
-// position and the virtual counter would diverge), virtual counter else
+// the selected unit decides the track0 source: the real /TRK0 sensor for the
+// physical unit (trackdisk recalibrates against it; the simulated counter
+// can disagree with the real head position), the simulated counter else
 //assign  _track0 =&(_selx | _dsktrack0);    // (original)
 wire cur_track0_n = phys_mask[sel] ? phys_track0_n : _dsktrack0;
 assign  _track0 = _selx | cur_track0_n;
@@ -470,11 +468,11 @@ assign dsktrack79 = dsktrack[sel]==82;
 // drive _ready signal control
 // Amiga DD drive activates _ready whenever _sel is active and motor is off
 // or whenever _sel is active, motor is on and there is a disk inserted (not implemented - _ready is active when _sel is active)
-// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: physical-drive support -
-// rewritten as the same per-unit AND-reduce as the other status lines, so
-// the physical unit's synthesized /RDY (motor-off = ready for the drive-ID
-// protocol; motor-on = real spin-up gate) substitutes cleanly. The vrdy_n
-// vector reproduces the original drives-count gating bit-exactly.
+// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: Hardware Floppy support.
+// Rewritten as the same per-unit AND-reduce as the other status lines, so
+// the synthesized /RDY of the physical unit (motor off = ready for the
+// drive-ID protocol; motor on = real spin-up gate) substitutes cleanly. The
+// vrdy_n vector reproduces the original drives-count gating bit-exactly.
 //assign _ready   = (_sel[3] | ~(drives[1] & drives[0]))
 //        & (_sel[2] | ~drives[1])
 //        & (_sel[1] | ~(drives[1] | drives[0]))
@@ -484,9 +482,9 @@ wire [3:0] rdy_src_n = (~phys_mask & vrdy_n) | (phys_mask & {4{phys_ready_n}});
 assign _ready = &(_sel | rdy_src_n);
 
 // MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: export the per-unit motor
-// latches - the physical unit's entry sources the real MOTEA pin (a PC
-// mechanism has a dedicated per-drive motor line; the latch IS the state a
-// real Amiga drive keeps internally after the /SEL-edge motor protocol).
+// latches. The entry of the physical unit drives the real MOTEA pin: a PC
+// mechanism has a dedicated per-drive motor line, and the latch is the state
+// a real Amiga drive keeps internally after the /SEL-edge motor protocol.
 assign motor_on_o = motor_on;
 
 //--------------------------------------------------------------------------------------
@@ -495,19 +493,19 @@ assign motor_on_o = motor_on;
 //
 // MiSTer2MEGA65 (AExp Amiga 500 port), August 2026: DSKBYTR observation
 // surface (see the obs_word/obs_stb port comment). obs_gate is true only
-// while the physical drive is the SELECTED, motor-on unit and the A/B revert
+// while the physical drive is the selected, motor-on unit and the A/B revert
 // bit is clear; then DSKBYTR returns a faithful BYTEREADY / WORDEQUAL / data
-// byte synthesised from the real reconstructed word stream. When the gate is
-// low (ADF read, no physical drive, or obs_legacy=1) the expression is the
-// original constant stub, byte-for-byte:
+// byte synthesized from the reconstructed word stream of the real drive.
+// When the gate is low (Disk Image read, no physical drive, or
+// obs_legacy=1) the expression is the original constant stub, byte for byte:
 //   assign dskbytr = reg_address_in[8:1]==DSKBYTR[8:1] ?
 //                    {1'b1,(trackrd|trackwr),dsklen[14],5'b1_0000,8'h00} : 16'h00_00; (original)
 wire obs_gate = |(phys_mask & ~_sel & motor_on) & ~obs_legacy;
 
 // The CPU DSKBYTR read access presents its address on the RGA bus for one
-// CCK period; rd_fall (falling edge of the address match) fires once at the
-// END of the access, so a read returns the CURRENT byte and only THEN
-// advances to the next - clear-on-read without disturbing the value the CPU
+// CCK period; obs_rd_end (falling edge of the address match) fires once at
+// the end of the access, so a read returns the current byte and only then
+// advances to the next: clear-on-read without disturbing the value the CPU
 // is latching this cycle.
 reg        obs_rd_d   = 1'b0;
 wire       obs_rd_lvl = (reg_address_in[8:1]==DSKBYTR[8:1]);
@@ -528,18 +526,19 @@ always @(posedge clk) begin
   end else if (obs_gate) begin
     if (obs_stb) begin
       // a fresh word from the real drive (arrives at true flux pace).
-      // newest-wins if a previous byte was still pending - cannot happen in
-      // the real-time PIO flow (words ~32 us apart, CPU reads in ~2.5 us).
+      // Newest wins if a previous byte was still pending, which cannot happen
+      // in the real-time PIO flow (words ~32 us apart, CPU reads in ~2.5 us).
       obs_wordq  <= obs_word;
       obs_wordeq <= (obs_word == dsksync);
       if (wordsync & (obs_word == dsksync)) begin
-        // WORDSYNC=1: real Paula reframes AT the sync match and SWALLOWS the
-        // sync word - the first byte delivered after WORDEQUAL is the first
-        // POST-sync byte. Announce WORDEQUAL only and enqueue NOTHING, so the
-        // next word's bytes become buffer[0]. Rob Northen Copylock's get_sector
-        // depends on this: it reads the first stored word and requires it to be
-        // the MFM-encoded sector index (the word after the sync), retrying
-        // forever otherwise. Under WORDSYNC=0 there is no swallow (below).
+        // WORDSYNC=1: a real Paula reframes at the sync match and swallows
+        // the sync word, so the first byte delivered after WORDEQUAL is the
+        // first byte after the sync. Announce WORDEQUAL only and enqueue
+        // nothing, so the bytes of the next word become buffer[0]. The
+        // Copylock sector routine depends on this: it requires the first
+        // stored word to be the MFM-encoded sector index (the word after the
+        // sync) and retries forever otherwise. Under WORDSYNC=0 the sync word
+        // is delivered like any other (below).
         obs_byte   <= 8'h00;
         obs_dskbyt <= 1'b0;
         obs_have   <= 1'b0;
@@ -673,13 +672,18 @@ always @(posedge clk) begin
   end
 end
 
-// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: physical-drive bring-up
-// diagnostic - the store signature: XOR of the first 1024 words actually
-// written into the read FIFO of each track-read attempt (trackrd rising
-// edge re-arms, so the window starts at the word after the DSKSYNC match -
-// exactly the window the AExp track engine signs on its side of the io
-// channel). Equal signatures on real hardware prove the channel and the
-// store gating word-exact; nothing functional reads these registers.
+// MiSTer2MEGA65 (AExp Amiga 500 port), July 2026: store signature for the
+// Hardware Floppy diagnostics (physical_fdd_diag). Per track-read attempt
+// (re-armed on the rising edge of trackrd) it XORs the first 1024 words
+// written into the read FIFO, with checkpoints after 64 and 256 words and a
+// copy of the first 8 words. For the Hardware Floppy the track engine
+// serves from the DSKSYNC word on and signs the same 1024 words on its side
+// of the io channel. Under WORDSYNC=0, as trackdisk sets it, Paula stores
+// from the first served word, so the two windows match and equal signatures
+// show that no word was lost or altered in between; under WORDSYNC=1 Paula
+// drops the sync word and the windows are one word apart. Diagnostic only:
+// nothing functional reads these registers. See AExp's
+// doc/developers/hardware-floppy.md, section 8.3 (Reading a dump).
 reg [15:0] dsig_acc  = 16'd0;
 reg [15:0] dsig_last = 16'd0;
 reg [15:0] dsig_c64  = 16'd0;
