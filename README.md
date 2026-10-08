@@ -53,3 +53,33 @@ On modifications:
   ("Hardware Floppy"), including a faithful `DSKBYTR` register for copy
   protections such as Rob Northen Copylock. With the Hardware Floppy
   switched off, the controller behaves exactly like the upstream one.
+
+On the MiSTer support software:
+
+* On the MiSTer, Minimig works together with software on the ARM processor
+  (the HPS): the `support/minimig/` folder of
+  [`Main_MiSTer`](https://github.com/MiSTer-devel/Main_MiSTer) configures the
+  core, uploads the Kickstart ROM and serves the floppy disk images over the
+  host channel (`IO_UIO`, `IO_FPGA`). The MEGA65 has no such processor, and
+  its QNICE helper CPU is neither fast enough nor connected to serve Paula's
+  floppy channel word by word. So AExp replaces this software with hardware
+  in its main repository, and the RTL in this fork is driven exactly the way
+  the HPS would drive it.
+* `minimig_fdd.cpp`, the floppy service, became the AExp track engine
+  (`CORE/vhdl/adf_track_engine.vhd`). Its MFM encoder and decoder are
+  bit-exact ports of the C code, extended for three drives, disk images in
+  HyperRAM with a background write-back to the SD card, real MFM clock bits,
+  and the Hardware Floppy.
+* `minimig_config.cpp` is the model for `CORE/vhdl/amiga_config.vhd`, which
+  replays the userio configuration commands `0xF1` to `0xF9` with fixed
+  Amiga 500 values after every reset. The Kickstart upload of that file is
+  replaced by the MiSTer2MEGA65 ROM loader, which writes the ROM straight into
+  block RAM.
+* Verbatim reference copies of both files, taken from Main_MiSTer commit
+  `c738023` ("Release 20260603", the MiSTer release that goes with the
+  Minimig release this fork started from), are kept in the AExp repository:
+  [`minimig_fdd.cpp`](https://github.com/sy2002/AExp/blob/develop/doc/developers/minimig_fdd.cpp)
+  and
+  [`minimig_config.cpp`](https://github.com/sy2002/AExp/blob/develop/doc/developers/minimig_config.cpp).
+  The AExp [architecture overview](https://github.com/sy2002/AExp/blob/develop/doc/developers/architecture.md#10-the-mister-hps-code-and-its-replacements)
+  lists which other HPS functions AExp replaces and how.
