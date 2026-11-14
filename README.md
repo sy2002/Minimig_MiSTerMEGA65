@@ -34,7 +34,8 @@ On modifications:
 * The scope is an Amiga 500: OCS chipset, PAL, 68000 CPU
   ([fx68k](https://github.com/ijor/fx68k)), 512 KB Chip RAM plus 512 KB Slow
   RAM. AGA, the 68020 (TG68K), IDE, the Toccata sound card and the SDRAM /
-  turbo paths are not used and partly removed or tied off.
+  turbo paths are not used and partly removed or tied off:
+  `rtl/cpu_wrapper.v` instantiates the fx68k as its only CPU.
 * We made sure that the code is actually synthesizing using Vivado (used for
   the MEGA65), which is stricter and more unforgiving than Quartus (used for
   the MiSTer): the Altera `altsyncram` / `altera_mf` memories are replaced by
@@ -52,7 +53,17 @@ On modifications:
   MEGA65's internal 3.5" drive can act as a real Amiga floppy drive
   ("Hardware Floppy"), including a faithful `DSKBYTR` register for copy
   protections such as Rob Northen Copylock. With the Hardware Floppy
-  switched off, the controller behaves exactly like the upstream one.
+  switched off, the controller behaves exactly like the upstream version
+  this fork is based on.
+* We backported four chipset fixes that upstream made after this fork
+  started: the CIA timers count pulses on their `CNT` input (MiSTer
+  [PR 230](https://github.com/MiSTer-devel/Minimig-AGA_MiSTer/pull/230)),
+  the blitter freezes when fill mode is switched off during a fill blit
+  ([PR 236](https://github.com/MiSTer-devel/Minimig-AGA_MiSTer/pull/236)),
+  `VHPOSR` reads back the exact beam position
+  ([PR 234](https://github.com/MiSTer-devel/Minimig-AGA_MiSTer/pull/234)),
+  and the field flag is only set while interlace is on (commit
+  [`d16cd84`](https://github.com/MiSTer-devel/Minimig-AGA_MiSTer/commit/d16cd8458cf8e915c5622ecc7c12ce69d776753c)).
 
 On the MiSTer support software:
 
@@ -71,8 +82,9 @@ On the MiSTer support software:
   HyperRAM with a background write-back to the SD card, real MFM clock bits,
   and the Hardware Floppy.
 * `minimig_config.cpp` is the model for `CORE/vhdl/amiga_config.vhd`, which
-  replays the userio configuration commands `0xF1` to `0xF9` with fixed
-  Amiga 500 values after every reset. The Kickstart upload of that file is
+  replays the userio configuration commands `0xF1` to `0xF9` after every
+  reset, with Amiga 500 values and with the Slow RAM and drive-count
+  settings of the AExp menu. The Kickstart upload of that file is
   replaced by the MiSTer2MEGA65 ROM loader, which writes the ROM straight into
   block RAM.
 * Verbatim reference copies of both files, taken from Main_MiSTer commit
